@@ -1,0 +1,73 @@
+version: '3.9 '
+
+services:
+
+  movieratings:
+    restart: always
+    build:
+      context: .
+    container_name: movieratings
+    volumes:
+      - .:/movieratings
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    depends_on:
+      - postgres
+      - elasticsearch
+    ports:
+      - 8000:8000
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=postgres
+      - DB_USER=postgres
+      - DB_PASS=2356
+
+  postgres:
+    restart: always
+    image: postgres:16.2-alpine
+    volumes:
+      - ./data/db:/var/lib/postgresql/data
+    container_name: postgres
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=2356
+
+  elasticsearch:
+    image: elasticsearch:8.12.2
+    environment:
+      - discovery.type=single-node
+    ports:
+      - "9200:9200"
+
+  worker:
+    restart: always
+    build:
+      context: .
+    volumes:
+      - ./:/movieratings
+    depends_on:
+      - redis
+      - movieratings
+    command: 'celery -A movieratings worker -l info -P solo'
+
+  beat:
+    restart: always
+    build:
+      context: .
+    volumes:
+      - ./:/movieratings
+    depends_on:
+      - redis
+      - movieratings
+      - worker
+    command: 'celery -A movieratings beat -l info'
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=2356
+
+  redis:
+    image: redis:7.2.4-alpine
+    restart: always
+    ports:
+      - "6379:6379"
